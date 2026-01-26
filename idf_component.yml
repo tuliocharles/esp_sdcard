@@ -1,0 +1,23 @@
+license: MIT
+
+description: ESP-SDCARD TOP LEVEL ESP IDF SDCARD COMPONENT
+
+url: https://github.com/tuliocharles/esp_sdcard
+repository: https://github.com/tuliocharles/esp_wifi_sdcard.git
+
+maintainers:
+  - "Túlio Carvalho <tulio.cefetmg@gmail.com>"
+
+dependencies:
+  idf: ">=5.5"
+  espressif/esp_wifi_remote:
+    version: ">=0.1.12"
+    rules:
+      - if: "target in [esp32p4, esp32h2]"
+
+files:
+  excludes:
+    - build/
+    - sdkconfig
+    - "**/dependencies.lock"
+    - .vscode/  
