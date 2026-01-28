@@ -11,7 +11,7 @@
 
 #define EXAMPLE_MAX_CHAR_SIZE    64
 
-#define MOUNT_POINT "/sdcard"
+
 
 // Pin assignments can be set in menuconfig, see "SD SPI Example Configuration" menu.
 // You can also change the pin assignments here by changing the following 4 lines.
@@ -20,8 +20,8 @@
 //#define PIN_NUM_CLK   14
 //#define PIN_NUM_CS    13
 
-
 static const char *TAG = "SDCARD";
+
 
 typedef struct esp_sdcard_t esp_sdcard_t;
 
@@ -36,8 +36,57 @@ struct esp_sdcard_t
 
 };
 
-void func(void)
+esp_err_t esp_sdcard_mount(const char *mount_point, esp_sdcard_handle_t handle)
 {
+
+    esp_err_t ret = ESP_OK;
+    // Options for mounting the filesystem.
+    // If format_if_mount_failed is set to true, SD card will be partitioned and
+    // formatted in case when mounting fails.
+    handle->mount = (esp_vfs_fat_sdmmc_mount_config_t){
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+
+    snprintf(handle->mount_point, sizeof(handle->mount_point), "%s", mount_point);
+
+    ESP_LOGI(TAG, "Initializing SD card");
+
+    ESP_LOGI(TAG, "Mounting filesystem");
+    ret = esp_vfs_fat_sdspi_mount(handle->mount_point, &handle->host, &handle->slot, &handle->mount, &handle->card);
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Failed to mount filesystem. "
+                     "If you want the card to be formatted, set the CONFIG_EXAMPLE_FORMAT_IF_MOUNT_FAILED menuconfig option.");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize the card (%s). "
+                     "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
+        }
+        return ret;
+    }
+    ESP_LOGI(TAG, "Filesystem mounted");
+
+    // Card has been initialized, print its properties
+    sdmmc_card_print_info(stdout, handle->card);
+    // Use POSIX and C standard library functions to work with files.
+    return ret;
+   
+}
+
+esp_err_t esp_sdcard_unmount(esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+    // Unmount the filesystem and disable the SD card
+    ESP_LOGI(TAG, "Unmounting filesystem");
+    ret = esp_vfs_fat_sdcard_unmount(handle->mount_point, handle->card);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to unmount filesystem (%s)", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "Filesystem unmounted");
+
+    return ret;
 }
 
 esp_err_t init_esp_sdcard(esp_sdcard_config_t *config, esp_sdcard_handle_t *handle)
@@ -54,19 +103,7 @@ esp_err_t init_esp_sdcard(esp_sdcard_config_t *config, esp_sdcard_handle_t *hand
         goto err;
     }
 
-    // Options for mounting the filesystem.
-    // If format_if_mount_failed is set to true, SD card will be partitioned and
-    // formatted in case when mounting fails.
-    esp_sdcard->mount = (esp_vfs_fat_sdmmc_mount_config_t){
-        .format_if_mount_failed = false,
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024
-    };
     
-    snprintf(esp_sdcard->mount_point, sizeof(esp_sdcard->mount_point), "%s", MOUNT_POINT);
-
-    ESP_LOGI(TAG, "Initializing SD card");
-
     // Use settings defined above to initialize SD card and mount FAT filesystem.
     // Note: esp_vfs_fat_sdmmc/sdspi_mount is all-in-one convenience functions.
     // Please check its source code and implement error recovery when developing
@@ -101,25 +138,7 @@ esp_err_t init_esp_sdcard(esp_sdcard_config_t *config, esp_sdcard_handle_t *hand
     esp_sdcard->slot.gpio_cs = config->cs_io;
     esp_sdcard->slot.host_id = esp_sdcard->host.slot;
 
-    ESP_LOGI(TAG, "Mounting filesystem");
-    ret = esp_vfs_fat_sdspi_mount(esp_sdcard->mount_point, &esp_sdcard->host, &esp_sdcard->slot, &esp_sdcard->mount, &esp_sdcard->card);
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Failed to mount filesystem. "
-                     "If you want the card to be formatted, set the CONFIG_EXAMPLE_FORMAT_IF_MOUNT_FAILED menuconfig option.");
-        } else {
-            ESP_LOGE(TAG, "Failed to initialize the card (%s). "
-                     "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
-        }
-        return ret;
-    }
-    ESP_LOGI(TAG, "Filesystem mounted");
-
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, esp_sdcard->card);
-
-    // Use POSIX and C standard library functions to work with files.
-
+    
 
     *handle = esp_sdcard;
     ESP_LOGI(TAG, "sdcard initialized successfully");

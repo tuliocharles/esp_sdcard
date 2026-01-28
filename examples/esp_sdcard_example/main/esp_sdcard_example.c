@@ -21,6 +21,28 @@ void app_main(void)
     }
     printf("SD card initialized successfully\n");
 
+    ret = esp_sdcard_mount("/sdcard", esp_sdcard_handle);
+    if (ret != ESP_OK) {
+        printf("Failed to mount SD card: %s\n", esp_err_to_name(ret));
+        
+    } else {
+         printf("SD card mounted successfully\n");
+    }
+    
+    ret = esp_sdcard_unmount(esp_sdcard_handle);
+    if (ret != ESP_OK) {
+        printf("Failed to unmount SD card: %s\n", esp_err_to_name(ret));
+    } else {
+        printf("SD card unmounted successfully\n");
+    }
 
+    ret = esp_sdcard_mount("/sdcard2", esp_sdcard_handle);
+    if (ret != ESP_OK) {
+        printf("Failed to mount SD card: %s\n", esp_err_to_name(ret));
+        
+    } else {
+         printf("SD card mounted successfully\n");
+    }
+    
 
 }
