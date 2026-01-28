@@ -1,7 +1,138 @@
 #include <stdio.h>
 #include "esp_sdcard.h"
 
+
+#include <string.h>
+#include <sys/unistd.h>
+#include <sys/stat.h>
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
+#include "sd_test_io.h"
+
+#define EXAMPLE_MAX_CHAR_SIZE    64
+
+#define MOUNT_POINT "/sdcard"
+
+// Pin assignments can be set in menuconfig, see "SD SPI Example Configuration" menu.
+// You can also change the pin assignments here by changing the following 4 lines.
+//#define PIN_NUM_MISO  2
+//#define PIN_NUM_MOSI  15
+//#define PIN_NUM_CLK   14
+//#define PIN_NUM_CS    13
+
+
+static const char *TAG = "SDCARD";
+
+typedef struct esp_sdcard_t esp_sdcard_t;
+
+struct esp_sdcard_t
+{
+    spi_bus_config_t bus;
+    sdspi_device_config_t slot;
+    sdmmc_host_t host;
+    sdmmc_card_t *card;
+    esp_vfs_fat_sdmmc_mount_config_t mount;
+    char mount_point[32];
+
+};
+
 void func(void)
 {
+}
 
+esp_err_t init_esp_sdcard(esp_sdcard_config_t *config, esp_sdcard_handle_t *handle)
+{
+    esp_err_t ret = ESP_OK;
+    esp_sdcard_t *esp_sdcard = NULL;
+    ESP_GOTO_ON_FALSE(config && handle, ESP_ERR_INVALID_ARG, err, TAG, "Invalid arguments");
+    esp_sdcard = calloc(1, sizeof(esp_sdcard_t));
+
+    if (!esp_sdcard)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for esp_sdcard");
+        ret = ESP_ERR_NO_MEM;
+        goto err;
+    }
+
+    // Options for mounting the filesystem.
+    // If format_if_mount_failed is set to true, SD card will be partitioned and
+    // formatted in case when mounting fails.
+    esp_sdcard->mount = (esp_vfs_fat_sdmmc_mount_config_t){
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+    
+    snprintf(esp_sdcard->mount_point, sizeof(esp_sdcard->mount_point), "%s", MOUNT_POINT);
+
+    ESP_LOGI(TAG, "Initializing SD card");
+
+    // Use settings defined above to initialize SD card and mount FAT filesystem.
+    // Note: esp_vfs_fat_sdmmc/sdspi_mount is all-in-one convenience functions.
+    // Please check its source code and implement error recovery when developing
+    // production applications.
+    ESP_LOGI(TAG, "Using SPI peripheral");
+
+    // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
+    // For setting a specific frequency, use host.max_freq_khz (range 400kHz - 20MHz for SDSPI)
+    // Example: for fixed frequency of 10MHz, use host.max_freq_khz = 10000;
+    esp_sdcard->host = (sdmmc_host_t) SDSPI_HOST_DEFAULT();
+
+    // For SoCs where the SD power can be supplied both via an internal or external (e.g. on-board LDO) power supply.
+    // When using specific IO pins (which can be used for ultra high-speed SDMMC) to connect to the SD card
+    // and the internal LDO power supply, we need to initialize the power supply first.
+   
+    esp_sdcard->bus.mosi_io_num = config->mosi_io;
+    esp_sdcard->bus.miso_io_num = config->miso_io;
+    esp_sdcard->bus.sclk_io_num = config->clk_io;
+    esp_sdcard->bus.quadwp_io_num = -1;
+    esp_sdcard->bus.quadhd_io_num = -1;
+    esp_sdcard->bus.max_transfer_sz = 4000;
+
+    ret = spi_bus_initialize(esp_sdcard->host.slot, &esp_sdcard->bus, SDSPI_DEFAULT_DMA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize bus.");
+        return ret;
+    }
+
+    // This initializes the slot without card detect (CD) and write protect (WP) signals.
+    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
+    esp_sdcard->slot = (sdspi_device_config_t)SDSPI_DEVICE_CONFIG_DEFAULT();
+    esp_sdcard->slot.gpio_cs = config->cs_io;
+    esp_sdcard->slot.host_id = esp_sdcard->host.slot;
+
+    ESP_LOGI(TAG, "Mounting filesystem");
+    ret = esp_vfs_fat_sdspi_mount(esp_sdcard->mount_point, &esp_sdcard->host, &esp_sdcard->slot, &esp_sdcard->mount, &esp_sdcard->card);
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Failed to mount filesystem. "
+                     "If you want the card to be formatted, set the CONFIG_EXAMPLE_FORMAT_IF_MOUNT_FAILED menuconfig option.");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize the card (%s). "
+                     "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
+        }
+        return ret;
+    }
+    ESP_LOGI(TAG, "Filesystem mounted");
+
+    // Card has been initialized, print its properties
+    sdmmc_card_print_info(stdout, esp_sdcard->card);
+
+    // Use POSIX and C standard library functions to work with files.
+
+
+    *handle = esp_sdcard;
+    ESP_LOGI(TAG, "sdcard initialized successfully");
+    ret =  ESP_OK;
+    return ret;
+    
+err:
+    if (esp_sdcard)
+    {
+        free(esp_sdcard);
+        esp_sdcard = NULL;
+    }
+
+    ESP_LOGE(TAG, "Failed to initialize adc: %s", esp_err_to_name(ret));
+    return ret;
 }
