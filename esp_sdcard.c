@@ -9,19 +9,9 @@
 #include "sdmmc_cmd.h"
 #include "sd_test_io.h"
 
-#define EXAMPLE_MAX_CHAR_SIZE    64
-
-
-
-// Pin assignments can be set in menuconfig, see "SD SPI Example Configuration" menu.
-// You can also change the pin assignments here by changing the following 4 lines.
-//#define PIN_NUM_MISO  2
-//#define PIN_NUM_MOSI  15
-//#define PIN_NUM_CLK   14
-//#define PIN_NUM_CS    13
+#define MAX_CHAR_SIZE    64
 
 static const char *TAG = "SDCARD";
-
 
 typedef struct esp_sdcard_t esp_sdcard_t;
 
@@ -33,13 +23,14 @@ struct esp_sdcard_t
     sdmmc_card_t *card;
     esp_vfs_fat_sdmmc_mount_config_t mount;
     char mount_point[32];
-
 };
+
+
 
 esp_err_t esp_sdcard_mount(const char *mount_point, esp_sdcard_handle_t handle)
 {
 
-    esp_err_t ret = ESP_OK;
+    esp_err_t ret = ESP_OK; ///
     // Options for mounting the filesystem.
     // If format_if_mount_failed is set to true, SD card will be partitioned and
     // formatted in case when mounting fails.
@@ -155,3 +146,31 @@ err:
     ESP_LOGE(TAG, "Failed to initialize adc: %s", esp_err_to_name(ret));
     return ret;
 }
+
+
+
+esp_err_t esp_sdcard_write(const char *path, const void *data, size_t len, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "wb");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return ESP_FAIL;
+    }
+    size_t written = fwrite(data, 1, len, f);
+    if (written != len) {
+        ESP_LOGE(TAG, "Failed to write data to file");
+        ret = ESP_FAIL;
+    }
+    fclose(f);
+    
+    return ret;
+}
+
