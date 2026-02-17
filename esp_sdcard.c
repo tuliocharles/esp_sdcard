@@ -23,6 +23,8 @@ struct esp_sdcard_t
     sdmmc_card_t *card;
     esp_vfs_fat_sdmmc_mount_config_t mount;
     char mount_point[32];
+    char buffer[MAX_CHAR_SIZE];
+    FILE *f;
 };
 
 
@@ -147,8 +149,6 @@ err:
     return ret;
 }
 
-
-
 esp_err_t esp_sdcard_write(const char *path, const void *data, size_t len, esp_sdcard_handle_t handle)
 {
     esp_err_t ret = ESP_OK;
@@ -164,6 +164,7 @@ esp_err_t esp_sdcard_write(const char *path, const void *data, size_t len, esp_s
         ESP_LOGE(TAG, "Failed to open file for writing");
         return ESP_FAIL;
     }
+
     size_t written = fwrite(data, 1, len, f);
     if (written != len) {
         ESP_LOGE(TAG, "Failed to write data to file");
@@ -174,3 +175,221 @@ esp_err_t esp_sdcard_write(const char *path, const void *data, size_t len, esp_s
     return ret;
 }
 
+esp_err_t esp_sdcard_read(const char *path, void *buffer, size_t max_len, size_t *out_len, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "rb");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return ESP_FAIL;
+    }
+    size_t read = fread(buffer, 1, max_len, f);
+    if (read == 0 && ferror(f)) {
+        ESP_LOGE(TAG, "Failed to read data from file");
+        ret = ESP_FAIL;
+    } else {
+        *out_len = read;
+    }
+    fclose(f);
+    
+    return ret;
+}
+
+// esp sdcard list files in directory
+esp_err_t esp_sdcard_list_files(const char *dir_path, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         dir_path);
+    
+    DIR *dir = opendir(full_path);
+    if (dir == NULL) {
+        ESP_LOGE(TAG, "Failed to open directory");
+        return ESP_FAIL;
+    }
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        ESP_LOGI(TAG, "Found file: %s", entry->d_name);
+    }
+    closedir(dir);
+    
+    return ret;
+}
+
+// ler linha por linha de arquivo e imprimir no console
+esp_err_t esp_sdcard_read_lines(const char *path, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "rb");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return ESP_FAIL;
+    }
+    char line[MAX_CHAR_SIZE];
+    while (fgets(line, sizeof(line), f)) {
+        ESP_LOGI(TAG, "Read line: %s", line);
+    }
+    if (ferror(f)) {
+        ESP_LOGE(TAG, "Failed to read data from file");
+        ret = ESP_FAIL;
+    }
+    fclose(f);
+    
+    return ret;
+}
+
+// append data to file
+esp_err_t esp_sdcard_append(const char *path, const void *data, size_t len, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "ab");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for appending");
+        return ESP_FAIL;
+    }
+    size_t written = fwrite(data, 1, len, f);
+    if (written != len) {
+        ESP_LOGE(TAG, "Failed to append data to file");
+        ret = ESP_FAIL;
+    }
+    fclose(f);
+    
+    return ret;
+}
+
+// implmente função exist para verificar se arquivo existe
+bool esp_sdcard_exists(const char *path,  esp_sdcard_handle_t handle)
+{
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "rb");
+    if (f == NULL) {
+        return false;
+    }
+    fclose(f);
+    return true;
+}
+
+// write line
+esp_err_t esp_sdcard_write_line(const char *path, const char *line, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "w");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return ESP_FAIL;
+    }
+    if (fprintf(f, "%s\n", line) < 0) {
+        ESP_LOGE(TAG, "Failed to write line to file");
+        ret = ESP_FAIL;
+    }
+    fclose(f);
+    
+    return ret;
+}
+
+// append line
+esp_err_t esp_sdcard_append_line(const char *path, const char *line, esp_sdcard_handle_t handle)
+{
+    esp_err_t ret = ESP_OK;
+
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    FILE *f = fopen(full_path, "a");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for appending");
+        return ESP_FAIL;
+    }
+    if (fprintf(f, "%s\n", line) < 0) {
+        ESP_LOGE(TAG, "Failed to append line to file");
+        ret = ESP_FAIL;
+    }
+    fclose(f);
+
+    return ret;
+}
+
+esp_err_t esp_sdcard_open_log(const char *path, esp_sdcard_handle_t handle)
+{
+    char full_path[MAX_CHAR_SIZE];
+    snprintf(full_path, sizeof(full_path),
+         "%s/%s",
+         handle->mount_point,
+         path);
+    
+    if (handle->f != NULL) {
+        ESP_LOGE(TAG, "Log file is already open");
+        return ESP_FAIL;
+    }
+
+    handle->f = fopen(full_path, "a");
+    if (handle->f == NULL) {
+        ESP_LOGE(TAG, "Failed to open log file");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
+esp_err_t esp_sdcard_write_log(const char *line, esp_sdcard_handle_t handle)
+{
+    if (handle->f == NULL) {
+        ESP_LOGE(TAG, "Log file is not open");
+        return ESP_FAIL;
+    }
+    if (fprintf(handle->f, "%s\n", line) < 0) {
+        ESP_LOGE(TAG, "Failed to write log line to file");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
+esp_err_t esp_sdcard_close_log(esp_sdcard_handle_t handle)
+{
+    if (handle->f == NULL) {
+        ESP_LOGE(TAG, "Log file is not open");
+        return ESP_FAIL;
+    }
+    fclose(handle->f);
+    handle->f = NULL;
+    return ESP_OK;
+}
