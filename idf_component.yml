@@ -3,7 +3,7 @@ license: MIT
 description: ESP-SDCARD TOP LEVEL ESP IDF SDCARD COMPONENT
 
 url: https://github.com/tuliocharles/esp_sdcard
-repository: https://github.com/tuliocharles/esp_wifi_sdcard.git
+repository: https://github.com/tuliocharles/esp_sdcard.git
 
 maintainers:
   - "Túlio Carvalho <tulio.cefetmg@gmail.com>"
